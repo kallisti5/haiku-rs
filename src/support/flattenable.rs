@@ -13,7 +13,6 @@
 //! trait.
 
 use std::ffi::{CStr, CString};
-use std::mem;
 
 use libc::{
 	B_BOOL_TYPE, B_DOUBLE_TYPE, B_FLOAT_TYPE, B_INT16_TYPE, B_INT32_TYPE, B_INT64_TYPE,
@@ -113,7 +112,7 @@ impl Flattenable<i16> for i16 {
 	}
 
 	fn flatten(&self) -> Vec<u8> {
-		let data = unsafe { mem::transmute::<i16, [u8; 2]>(*self) };
+		let data = self.to_ne_bytes();
 		data.to_vec()
 	}
 
@@ -140,7 +139,7 @@ impl Flattenable<i32> for i32 {
 	}
 
 	fn flatten(&self) -> Vec<u8> {
-		let data = unsafe { mem::transmute::<i32, [u8; 4]>(*self) };
+		let data = self.to_ne_bytes();
 		data.to_vec()
 	}
 
@@ -167,7 +166,7 @@ impl Flattenable<i64> for i64 {
 	}
 
 	fn flatten(&self) -> Vec<u8> {
-		let data = unsafe { mem::transmute::<i64, [u8; 8]>(*self) };
+		let data = self.to_ne_bytes();
 		data.to_vec()
 	}
 
@@ -220,7 +219,7 @@ impl Flattenable<u16> for u16 {
 	}
 
 	fn flatten(&self) -> Vec<u8> {
-		let data = unsafe { mem::transmute::<u16, [u8; 2]>(*self) };
+		let data = self.to_ne_bytes();
 		data.to_vec()
 	}
 
@@ -247,7 +246,7 @@ impl Flattenable<u32> for u32 {
 	}
 
 	fn flatten(&self) -> Vec<u8> {
-		let data = unsafe { mem::transmute::<u32, [u8; 4]>(*self) };
+		let data = self.to_ne_bytes();
 		data.to_vec()
 	}
 
@@ -274,7 +273,7 @@ impl Flattenable<u64> for u64 {
 	}
 
 	fn flatten(&self) -> Vec<u8> {
-		let data = unsafe { mem::transmute::<u64, [u8; 8]>(*self) };
+		let data = self.to_ne_bytes();
 		data.to_vec()
 	}
 
@@ -301,7 +300,7 @@ impl Flattenable<f32> for f32 {
 	}
 
 	fn flatten(&self) -> Vec<u8> {
-		let data = unsafe { mem::transmute::<f32, [u8; 4]>(*self) };
+		let data = self.to_ne_bytes();
 		data.to_vec()
 	}
 
@@ -310,7 +309,7 @@ impl Flattenable<f32> for f32 {
 			Err(HaikuError::from(ErrorKind::InvalidData))
 		} else {
 			let tmp: u32 = buffer.iter().rev().fold(0, |acc, &b| (acc << 8) | b as u32);
-			let tmp: f32 = unsafe { mem::transmute::<u32, f32>(tmp) };
+			let tmp: f32 = f32::from_bits(tmp);
 			Ok(tmp)
 		}
 	}
@@ -330,7 +329,7 @@ impl Flattenable<f64> for f64 {
 	}
 
 	fn flatten(&self) -> Vec<u8> {
-		let data = unsafe { mem::transmute::<f64, [u8; 8]>(*self) };
+		let data = self.to_ne_bytes();
 		data.to_vec()
 	}
 
@@ -339,7 +338,7 @@ impl Flattenable<f64> for f64 {
 			Err(HaikuError::from(ErrorKind::InvalidData))
 		} else {
 			let tmp: u64 = buffer.iter().rev().fold(0, |acc, &b| (acc << 8) | b as u64);
-			let tmp: f64 = unsafe { mem::transmute::<u64, f64>(tmp) };
+			let tmp: f64 = f64::from_bits(tmp);
 			Ok(tmp)
 		}
 	}
