@@ -70,7 +70,7 @@ impl Messenger {
 		let mut port: port_id = -1;
 		if team.is_some() {
 			match ROSTER.get_running_app_info(team.unwrap()) {
-				Some(info) => {
+				Ok(info) => {
 					if info.signature != signature {
 						return Err(HaikuError::new(
 							ErrorKind::InvalidInput,
@@ -80,7 +80,7 @@ impl Messenger {
 					port = info.port;
 					app_argv_only = info.is_argv_only();
 				}
-				None => {
+				Err(_) => {
 					return Err(HaikuError::new(
 						ErrorKind::NotFound,
 						"cannot find application info for this team",
@@ -100,11 +100,11 @@ impl Messenger {
 
 			if port < 0 {
 				match ROSTER.get_app_info(signature) {
-					Some(info) => {
+					Ok(info) => {
 						port = info.port;
 						app_argv_only = info.is_argv_only();
 					}
-					None => {
+					Err(_) => {
 						return Err(HaikuError::new(
 							ErrorKind::NotFound,
 							"Cannot find a running app with this signature",

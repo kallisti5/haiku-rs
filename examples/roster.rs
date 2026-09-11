@@ -39,8 +39,8 @@ fn main() {
 		.expect("Unexpected error getting the list of teams");
 	for team in team_list {
 		let app_info = match ROSTER.get_running_app_info(&team) {
-			Some(info) => info,
-			None => continue,
+			Ok(info) => info,
+			Err(_) => continue,
 		};
 		let path = truncate_string(&app_info.path, NAME_FIELD_WIDTH);
 		println!(

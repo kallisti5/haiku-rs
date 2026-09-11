@@ -80,78 +80,54 @@ impl Roster {
 	/// Get a list of teams that are currently running
 	///
 	/// If there is a problem connecting to the registrar, this method
-	/// will return None.
-	pub fn get_app_list(&self) -> Option<Vec<Team>> {
-		let request = Message::new(haiku_constant!('r', 'g', 'a', 'l'));
-		let response = self.messenger.send_and_wait_for_reply(request, None);
-
-		if response.is_err() {
-			return None;
+	/// will return an error.
+	pub fn get_app_list(&self) -> Result<Vec<Team>> {
+		let response = self.send_request(Message::new(B_REG_GET_APP_LIST))?;
+		let count = response.get_info("teams").map_or(0, |info| info.1);
+		let mut result: Vec<Team> = Vec::with_capacity(count);
+		for index in 0..count {
+			let team: team_id = response.find_data("teams", index)?;
+			result.push(Team::from(team).ok_or_else(|| {
+				HaikuError::new(ErrorKind::NotFound, "Unknown team in the app list")
+			})?);
 		}
-
-		let response = response.unwrap();
-		if response.what() == haiku_constant!('r', 'g', 's', 'u') {
-			let count = match response.get_info("teams") {
-				Some(info) => info.1,
-				None => return None,
-			};
-			let mut result: Vec<Team> = Vec::with_capacity(count);
-			for index in 0..count {
-				let team = response.find_data::<i32>("teams", index).unwrap();
-				result.push(Team::from(team).unwrap());
-			}
-			return Some(result);
-		}
-		return None;
+		Ok(result)
 	}
 
 	/// Get the information of a running application
 	///
 	/// If there is a problem connecting to the registrar, this method
-	/// will return None.
-	pub fn get_running_app_info(&self, team: &Team) -> Option<AppInfo> {
-		let mut request = Message::new(haiku_constant!('r', 'g', 'a', 'i'));
-		request.add_data("team", &team.get_team_id()).unwrap();
-		let response = self.messenger.send_and_wait_for_reply(request, None);
-
-		if response.is_err() {
-			println!("Response.is err");
-			return None;
-		}
-
-		let response = response.unwrap();
-		if response.what() == haiku_constant!('r', 'g', 's', 'u') {
-			let flat_app_info = response.find_data::<FlatAppInfo>("app_info", 0).unwrap();
-			return Some(flat_app_info.to_app_info());
-		}
-		return None;
+	/// will return an error.
+	pub fn get_running_app_info(&self, team: &Team) -> Result<AppInfo> {
+		let mut request = Message::new(B_REG_GET_APP_INFO);
+		request.add_data("team", &team.get_team_id())?;
+		self.get_app_info_for_request(request)
 	}
 
 	/// Get the information of an application with a certain signature
 	///
-	/// If there is a problem connecting tot the registrar, this method
-	/// will return None.
-	/// Get the information of a running application
-	///
 	/// If there is a problem connecting to the registrar, this method
-	/// will return None.
-	pub fn get_app_info(&self, signature: &str) -> Option<AppInfo> {
-		let mut request = Message::new(haiku_constant!('r', 'g', 'a', 'i'));
-		request
-			.add_data("signature", &String::from(signature))
-			.unwrap();
-		let response = self.messenger.send_and_wait_for_reply(request, None);
+	/// will return an error.
+	pub fn get_app_info(&self, signature: &str) -> Result<AppInfo> {
+		let mut request = Message::new(B_REG_GET_APP_INFO);
+		request.add_data("signature", &String::from(signature))?;
+		self.get_app_info_for_request(request)
+	}
 
-		if response.is_err() {
-			return None;
-		}
+	fn get_app_info_for_request(&self, request: Message) -> Result<AppInfo> {
+		let response = self.send_request(request)?;
+		let flat_app_info: FlatAppInfo = response.find_data("app_info", 0)?;
+		Ok(flat_app_info.to_app_info())
+	}
 
-		let response = response.unwrap();
-		if response.what() == haiku_constant!('r', 'g', 's', 'u') {
-			let flat_app_info = response.find_data::<FlatAppInfo>("app_info", 0).unwrap();
-			return Some(flat_app_info.to_app_info());
+	fn send_request(&self, request: Message) -> Result<Message> {
+		let response = self.messenger.send_and_wait_for_reply(request, None)?;
+		if response.what() == B_REG_SUCCESS {
+			Ok(response)
+		} else {
+			let error: status_t = response.find_data("error", 0).unwrap_or(B_ERROR);
+			Err(HaikuError::from_raw_os_error(error))
 		}
-		return None;
 	}
 
 	/// Register or preregister an app in the Registrar
@@ -166,7 +142,7 @@ impl Roster {
 		full_registration: bool,
 	) -> Result<ApplicationRegistrationResult> {
 		// B_REG_ADD_APP
-		let mut request = Message::new(haiku_constant!('r', 'g', 'a', 'a'));
+		let mut request = Message::new(B_REG_ADD_APP);
 		request.add_data("signature", signature).unwrap();
 		request.add_data("ref", entry).unwrap();
 		request.add_data("flags", &flags).unwrap();
@@ -194,17 +170,15 @@ impl Roster {
 			}
 		} else {
 			let token: Result<i32> = response.find_data("token", 0);
-			let team: Result<team_id> = response.find_data("team", 0);
-			if token.is_ok() && team.is_ok() {
+			let other_team: Result<team_id> = response.find_data("other_team", 0);
+			if token.is_ok() && other_team.is_ok() {
 				Ok(ApplicationRegistrationResult::OtherInstance(
-					team.unwrap(),
+					other_team.unwrap(),
 					token.unwrap(),
 				))
 			} else {
-				Err(HaikuError::new(
-					ErrorKind::InvalidData,
-					"Invalid registration response by Registrar",
-				))
+				let error: status_t = response.find_data("error", 0).unwrap_or(B_ERROR);
+				Err(HaikuError::from_raw_os_error(error))
 			}
 		}
 	}
@@ -217,60 +191,52 @@ impl Roster {
 		token: u32,
 	) -> Result<ApplicationRegistrationStatus> {
 		// B_REG_IS_APP_REGISTERED
-		let mut request = Message::new(haiku_constant!('r', 'g', 'i', 'p'));
-		request.add_data("ref", entry).unwrap();
-		request.add_data("team", &team).unwrap();
-		request.add_data("token", &(token as i32)).unwrap();
+		let mut request = Message::new(B_REG_IS_APP_REGISTERED);
+		request.add_data("ref", entry)?;
+		request.add_data("team", &team)?;
+		request.add_data("token", &(token as i32))?;
 
-		let response = self.messenger.send_and_wait_for_reply(request, None)?;
-		if response.what() == B_REG_SUCCESS {
-			let registered: bool = response.find_data("registered", 0).unwrap_or(false);
-			let pre_registered: bool = response.find_data("pre-registered", 0).unwrap_or(false);
-			let app_info: Option<AppInfo> = match response.find_data::<FlatAppInfo>("app_info", 0) {
-				Ok(info) => Some(info.to_app_info()),
-				Err(_) => None,
-			};
-			if (pre_registered || registered) && app_info.is_none() {
-				Err(HaikuError::new(
-					ErrorKind::InvalidData,
-					"The Registrar returned an invalid response",
-				))
-			} else if pre_registered {
-				Ok(ApplicationRegistrationStatus::PreRegistered(
-					app_info.unwrap(),
-				))
-			} else if registered {
-				Ok(ApplicationRegistrationStatus::Registered(app_info.unwrap()))
-			} else {
-				Ok(ApplicationRegistrationStatus::NotRegistered)
-			}
-		} else {
-			let errno: i32 = response.find_data("error", 0).unwrap_or(-1);
+		let response = self.send_request(request)?;
+		let registered: bool = response.find_data("registered", 0).unwrap_or(false);
+		let pre_registered: bool = response.find_data("pre-registered", 0).unwrap_or(false);
+		let app_info: Option<AppInfo> = match response.find_data::<FlatAppInfo>("app_info", 0) {
+			Ok(info) => Some(info.to_app_info()),
+			Err(_) => None,
+		};
+		if (pre_registered || registered) && app_info.is_none() {
 			Err(HaikuError::new(
 				ErrorKind::InvalidData,
-				format!("The Registrar returned an error on request: {}", errno),
+				"The Registrar returned an invalid response",
 			))
+		} else if pre_registered {
+			Ok(ApplicationRegistrationStatus::PreRegistered(
+				app_info.unwrap(),
+			))
+		} else if registered {
+			Ok(ApplicationRegistrationStatus::Registered(app_info.unwrap()))
+		} else {
+			Ok(ApplicationRegistrationStatus::NotRegistered)
 		}
 	}
 
 	/// Unregister a previously registered application
 	pub(crate) fn remove_application(&self, team: team_id) -> Result<()> {
 		// B_REG_REMOVE_APP
-		let mut request = Message::new(haiku_constant!('r', 'g', 'r', 'a'));
-		request.add_data("team", &team).unwrap();
-
-		let response = self.messenger.send_and_wait_for_reply(request, None)?;
-		if response.what() == B_REG_SUCCESS {
-			Ok(())
-		} else {
-			let error: status_t = response.find_data("error", 0).unwrap_or(B_ERROR);
-			Err(HaikuError::from_raw_os_error(error))
-		}
+		let mut request = Message::new(B_REG_REMOVE_APP);
+		request.add_data("team", &team)?;
+		self.send_request(request)?;
+		Ok(())
 	}
 }
 
-const B_REG_APP_INFO_TYPE: u32 = haiku_constant!('r', 'g', 'a', 'i');
 const B_REG_SUCCESS: u32 = haiku_constant!('r', 'g', 's', 'u');
+const B_REG_GET_APP_LIST: u32 = haiku_constant!('r', 'g', 'a', 'l');
+const B_REG_GET_APP_INFO: u32 = haiku_constant!('r', 'g', 'a', 'i');
+const B_REG_ADD_APP: u32 = haiku_constant!('r', 'g', 'a', 'a');
+const B_REG_IS_APP_REGISTERED: u32 = haiku_constant!('r', 'g', 'i', 'p');
+const B_REG_REMOVE_APP: u32 = haiku_constant!('r', 'g', 'r', 'a');
+const B_REG_APP_INFO_TYPE: u32 = haiku_constant!('r', 'g', 'a', 'i');
+const B_REGISTRAR_SIGNATURE: &str = "application/x-vnd.haiku-registrar";
 
 // It is not possible to safely get references from packed structs. Therefore
 // we have a private FlatAppInfo to read data from messages, and a public
@@ -430,7 +396,7 @@ lazy_static! {
 	/// applications.
 	pub static ref ROSTER: Roster = {
 		// Get a connection with the registrar
-		let roster_data = LAUNCH_ROSTER.get_data("application/x-vnd.haiku-registrar").expect("Cannot connect to the launch_daemon to get info about the registrar!");
+		let roster_data = LAUNCH_ROSTER.get_data(B_REGISTRAR_SIGNATURE).expect("Cannot connect to the launch_daemon to get info about the registrar!");
 		if roster_data.what() != (B_OK as u32) {
 			panic!("Cannot connect to the registrar");
 		}
