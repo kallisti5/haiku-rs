@@ -255,3 +255,48 @@ fn test_synchronous_message_sending() {
 	let port = response_message.find_data::<i32>("port", 0).unwrap();
 	println!("registrar port: {}", port);
 }
+#[test]
+fn test_messenger_send_header() {
+	use crate::app::sys::{
+		B_PREFERRED_TOKEN, MESSAGE_FLAG_REPLY_DONE, MESSAGE_FLAG_REPLY_REQUIRED,
+		MESSAGE_FLAG_WAS_DELIVERED,
+	};
+	use libc::B_MESSAGE_TYPE;
+
+	let port = Port::create("test_messenger_send_header", 4).unwrap();
+	let messenger = Messenger::from_port(&port).unwrap();
+	let message = Message::new(0x1234_5678);
+	messenger.send(message, &messenger).unwrap();
+
+	let (code, data) = port.read().unwrap();
+	assert_eq!(code, B_MESSAGE_TYPE as i32);
+	let received = Message::unflatten(&data).unwrap();
+	assert_eq!(received.what(), 0x1234_5678);
+	assert_eq!(received.header.target, B_PREFERRED_TOKEN);
+	assert_eq!(received.header.reply_target, B_PREFERRED_TOKEN);
+	assert_eq!(received.header.reply_port, port.get_port_id());
+	assert!(received.header.flags & MESSAGE_FLAG_WAS_DELIVERED != 0);
+	assert!(received.header.flags & MESSAGE_FLAG_REPLY_REQUIRED == 0);
+	assert!(received.header.flags & MESSAGE_FLAG_REPLY_DONE == 0);
+}
+
+#[test]
+fn test_messenger_send_and_ask_reply_header() {
+	use crate::app::sys::{
+		MESSAGE_FLAG_REPLY_DONE, MESSAGE_FLAG_REPLY_REQUIRED, MESSAGE_FLAG_WAS_DELIVERED,
+	};
+	use libc::B_MESSAGE_TYPE;
+
+	let port = Port::create("test_messenger_ask_reply", 4).unwrap();
+	let messenger = Messenger::from_port(&port).unwrap();
+	let message = Message::new(0x0bad_cafe);
+	messenger.send_and_ask_reply(message, &messenger).unwrap();
+
+	let (code, data) = port.read().unwrap();
+	assert_eq!(code, B_MESSAGE_TYPE as i32);
+	let received = Message::unflatten(&data).unwrap();
+	assert_eq!(received.header.reply_port, port.get_port_id());
+	assert!(received.header.flags & MESSAGE_FLAG_WAS_DELIVERED != 0);
+	assert!(received.header.flags & MESSAGE_FLAG_REPLY_REQUIRED != 0);
+	assert!(received.header.flags & MESSAGE_FLAG_REPLY_DONE == 0);
+}

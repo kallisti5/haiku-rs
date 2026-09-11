@@ -108,3 +108,9 @@ pub(crate) fn get_app_path(team: team_id) -> Result<PathBuf> {
 		"Cannot find the app image",
 	))
 }
+#[test]
+fn test_get_app_path() {
+	let path = get_app_path(0).expect("Cannot get the app path");
+	assert!(path.is_absolute());
+	assert!(path.is_file());
+}
