@@ -395,3 +395,127 @@ fn test_flattenable_primitives() {
 	let unflattened_value = String::unflatten(&flattened_value).unwrap();
 	assert_eq!(value, unflattened_value);
 }
+#[test]
+fn test_flattenable_roundtrip() {
+	macro_rules! roundtrip {
+		($t:ty, $value:expr) => {{
+			let value: $t = $value;
+			let flat = value.flatten();
+			assert_eq!(flat.len(), value.flattened_size(), stringify!($t));
+			assert_eq!(<$t>::unflatten(&flat).unwrap(), value, stringify!($t));
+		}};
+	}
+
+	roundtrip!(bool, true);
+	roundtrip!(bool, false);
+	roundtrip!(i8, i8::MIN);
+	roundtrip!(i8, i8::MAX);
+	roundtrip!(i16, i16::MIN);
+	roundtrip!(i16, i16::MAX);
+	roundtrip!(i32, i32::MIN);
+	roundtrip!(i32, i32::MAX);
+	roundtrip!(i64, i64::MIN);
+	roundtrip!(i64, i64::MAX);
+	roundtrip!(u8, u8::MIN);
+	roundtrip!(u8, u8::MAX);
+	roundtrip!(u16, u16::MIN);
+	roundtrip!(u16, u16::MAX);
+	roundtrip!(u32, u32::MIN);
+	roundtrip!(u32, u32::MAX);
+	roundtrip!(u64, u64::MIN);
+	roundtrip!(u64, u64::MAX);
+	roundtrip!(f32, 0.0);
+	roundtrip!(f32, 1.5);
+	roundtrip!(f32, f32::MIN);
+	roundtrip!(f32, f32::MAX);
+	roundtrip!(f64, 0.0);
+	roundtrip!(f64, 1.5);
+	roundtrip!(f64, f64::MIN);
+	roundtrip!(f64, f64::MAX);
+	roundtrip!(String, String::new());
+	roundtrip!(String, String::from("This is a test string"));
+}
+
+#[test]
+fn test_flattenable_fixed_size() {
+	assert!(bool::is_fixed_size());
+	assert!(i8::is_fixed_size());
+	assert!(i16::is_fixed_size());
+	assert!(i32::is_fixed_size());
+	assert!(i64::is_fixed_size());
+	assert!(u8::is_fixed_size());
+	assert!(u16::is_fixed_size());
+	assert!(u32::is_fixed_size());
+	assert!(u64::is_fixed_size());
+	assert!(f32::is_fixed_size());
+	assert!(f64::is_fixed_size());
+	assert!(!String::is_fixed_size());
+}
+
+#[test]
+fn test_flattenable_float_bits() {
+	for bits in [
+		0x0000_0000_u32,
+		0x0000_0001,
+		0x3f80_0000,
+		0x7fc0_0000,
+		0x8000_0000,
+	] {
+		let value = f32::from_bits(bits);
+		let unflattened = f32::unflatten(&value.flatten()).unwrap();
+		assert_eq!(unflattened.to_bits(), bits);
+	}
+
+	for bits in [
+		0x0000_0000_0000_0000_u64,
+		0x0000_0000_0000_0001,
+		0x3ff0_0000_0000_0000,
+		0x7ff8_0000_0000_0000,
+		0x8000_0000_0000_0000,
+	] {
+		let value = f64::from_bits(bits);
+		let unflattened = f64::unflatten(&value.flatten()).unwrap();
+		assert_eq!(unflattened.to_bits(), bits);
+	}
+}
+
+#[cfg(target_endian = "little")]
+#[test]
+fn test_flattenable_byte_order() {
+	assert_eq!(1_i16.flatten(), vec![1, 0]);
+	assert_eq!(0x1234_u16.flatten(), vec![0x34, 0x12]);
+	assert_eq!(0x1234_i32.flatten(), vec![0x34, 0x12, 0, 0]);
+	assert_eq!(0xdead_beef_u32.flatten(), vec![0xef, 0xbe, 0xad, 0xde]);
+	assert_eq!(
+		0x0123_4567_89ab_cdef_u64.flatten(),
+		vec![0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01]
+	);
+	assert_eq!(
+		f32::from_bits(0x3f80_0000).flatten(),
+		vec![0, 0, 0x80, 0x3f]
+	);
+	assert_eq!(
+		f64::from_bits(0x3ff0_0000_0000_0000).flatten(),
+		vec![0, 0, 0, 0, 0, 0, 0xf0, 0x3f]
+	);
+}
+
+#[test]
+fn test_flattenable_invalid_data() {
+	assert!(matches!(
+		i16::unflatten(&[0, 0, 0]).unwrap_err().kind(),
+		ErrorKind::InvalidData
+	));
+	assert!(matches!(
+		i32::unflatten(&[0]).unwrap_err().kind(),
+		ErrorKind::InvalidData
+	));
+	assert!(matches!(
+		f32::unflatten(&[0, 0]).unwrap_err().kind(),
+		ErrorKind::InvalidData
+	));
+	assert!(matches!(
+		String::unflatten(&[]).unwrap_err().kind(),
+		ErrorKind::InvalidData
+	));
+}
