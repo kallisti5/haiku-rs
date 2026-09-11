@@ -50,18 +50,17 @@ pub enum NotificationType {
 ///
 /// # Example
 ///
-/// ```norun
-/// # extern crate haiku;
+/// ```no_run
 /// # use haiku::app::{Messenger, Notification, NotificationType};
+/// # use haiku::kernel::ports::Port;
 /// # use std::time::Duration;
-/// # let reply_to_messenger = Messenger::from_port_id(-1);
-/// let notification = Notification {
-/// 	notification_type: NotificationType::Progress,
-/// 	title: Some(String::from("My Progress")),
-/// 	content: Some(String::from("Updating Something")),
-/// 	progress: 0.5,
-/// 	.. Default::default()
-/// };
+/// # let port = Port::create("notification reply", 10).unwrap();
+/// # let reply_to_messenger = Messenger::from_port(&port).unwrap();
+/// let mut notification = Notification::default();
+/// notification.notification_type = NotificationType::Progress;
+/// notification.title = Some(String::from("My Progress"));
+/// notification.content = Some(String::from("Updating Something"));
+/// notification.progress = 0.5;
 ///
 /// notification.send(&reply_to_messenger, Some(Duration::new(5, 0)));
 /// ```
