@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use libc::c_char;
 use libc::B_OK;
-use libc::{area_id, get_next_image_info, image_info, image_type, port_id, team_id, type_code};
+use libc::{area_id, get_next_image_info, image_info, port_id, team_id, type_code, B_APP_IMAGE};
 
 use crate::haiku_constant;
 use crate::support::{ErrorKind, HaikuError, Result};
@@ -96,7 +96,7 @@ pub(crate) fn get_app_path(team: team_id) -> Result<PathBuf> {
 
 	// Iterate over the rest of the images until the app image is found
 	while result == B_OK {
-		if info.image_type == image_type::B_APP_IMAGE as i32 {
+		if info.image_type == B_APP_IMAGE as i32 {
 			let c_name = unsafe { CStr::from_ptr((&info.name) as *const c_char) };
 			return Ok(PathBuf::from(c_name.to_str().unwrap()));
 		}
