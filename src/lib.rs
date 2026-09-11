@@ -15,6 +15,9 @@
 //!
 //! This crate is very much work in progress.
 
+#[cfg(not(target_os = "haiku"))]
+compile_error!("This crate can only be compiled for Haiku targets");
+
 #[macro_use]
 extern crate lazy_static;
 extern crate libc;
